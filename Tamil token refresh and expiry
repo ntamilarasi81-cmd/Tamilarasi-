@@ -1,0 +1,55 @@
+Import datetime
+Import jwt
+From flask import Flask, request, jsonify
+
+App = Flask(__name__)
+SECRET_KEY = “super-secret-key”
+
+# Generate tokens
+Def create_tokens(user_id):
+    Access_token = jwt.encode(
+        {“user_id”: user_id, “exp”: datetime.datetime.utcnow() + datetime.timedelta(minutes=15)},
+        SECRET_KEY,
+        Algorithm=”HS256”
+    )
+    Refresh_token = jwt.encode(
+        {“user_id”: user_id, “exp”: datetime.datetime.utcnow() + datetime.timedelta(days=7)},
+        SECRET_KEY,
+        Algorithm=”HS256”
+    )
+    Return access_token, refresh_token
+
+# Refresh endpoint
+@app.route(“/refresh”, methods=[“POST”])
+Def refresh():
+    Token = request.json.get(“refresh_token”)
+    Try:
+        Decoded = jwt.decode(token, SECRET_KEY, algorithms=[“HS256”])
+        New_access, new_refresh = create_tokens(decoded[“user_id”])
+        Return jsonify({“access_token”: new_access, “refresh_token”: new_refresh})
+    Except jwt.ExpiredSignatureError:
+        Return jsonify({“error”: “Refresh token expired, login required”}), 401
+    Except jwt.InvalidTokenError:
+        Return jsonify({“error”: “Invalid token”}), 401
+
+# Example login endpoint
+@app.route(“/login”, methods=[“POST”])
+Def login():
+    User_id = request.json.get(“user_id”)  # Normally check username+password
+    Access_token, refresh_token = create_tokens(user_id)
+    Return jsonify({“access_token”: access_token, “refresh_token”: refresh_token})
+
+# Protected endpoint
+@app.route(“/secure-data”)
+Def secure_data():
+    Token = request.headers.get(“Authorization”, “”).replace(“Bearer “, “”)
+    Try:
+        Decoded = jwt.decode(token, SECRET_KEY, algorithms=[“HS256”])
+        Return jsonify({“message”: f”Hello user {decoded[‘user_id’]}!”})
+    Except jwt.ExpiredSignatureError:
+        Return jsonify({“error”: “Access token expired”}), 401
+    Except jwt.InvalidTokenError:
+        Return jsonify({“error”: “Invalid access token”}), 401
+
+If __name__ == “__main__”:
+    App.run(debug=True)
