@@ -1,0 +1,135 @@
+Step 1: Setup
+
+Install dependencies:
+
+npm init -y
+npm install express jsonwebtoken body-parser
+
+
+---
+
+Step 2: Code (server.js)
+
+const express = require('express');
+const jwt = require('jsonwebtoken');
+const bodyParser = require('body-parser');
+
+const app = express();
+app.use(bodyParser.json());
+
+// Secret keys
+const ACCESS_TOKEN_SECRET = 'access_secret_key';
+const REFRESH_TOKEN_SECRET = 'refresh_secret_key';
+
+// Dummy user
+const user = { id: 1, username: 'tamilarasi' };
+
+// Store refresh tokens
+let refreshTokens = [];
+
+// Generate tokens
+function generateAccessToken(user) {
+    return jwt.sign(user, ACCESS_TOKEN_SECRET, { expiresIn: '20s' }); // expires in 20 seconds
+}
+
+function generateRefreshToken(user) {
+    const refreshToken = jwt.sign(user, REFRESH_TOKEN_SECRET, { expiresIn: '1d' });
+    refreshTokens.push(refreshToken);
+    return refreshToken;
+}
+
+// Login endpoint
+app.post('/login', (req, res) => {
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+    res.json({ accessToken, refreshToken });
+});
+
+// Refresh token endpoint
+app.post('/token', (req, res) => {
+    const { token } = req.body;
+    if (!token) return res.sendStatus(401);
+    if (!refreshTokens.includes(token)) return res.sendStatus(403);
+
+    jwt.verify(token, REFRESH_TOKEN_SECRET, (err, user) => {
+        if (err) return res.sendStatus(403);
+        const accessToken = generateAccessToken({ id: user.id, username: user.username });
+        res.json({ accessToken });
+    });
+});
+
+// Protected endpoint
+app.get('/protected', authenticateToken, (req, res) => {
+    res.json({ message: 'Protected data', user: req.user });
+});
+
+// Middleware to authenticate access token
+function authenticateToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.sendStatus(401);
+
+    jwt.verify(token, ACCESS_TOKEN_SECRET, (err, user) => {
+        if (err) return res.sendStatus(403);
+        req.user = user;
+        next();
+    });
+}
+
+// Logout endpoint
+app.post('/logout', (req, res) => {
+    const { token } = req.body;
+    refreshTokens = refreshTokens.filter(t => t !== token);
+    res.send('Logged out');
+});
+
+app.listen(3000, () => console.log('Server running on port 3000'));
+
+
+-
+
+
+
+
+---
+
+Step 4: Example output
+
+Login
+
+POST /login
+{
+    "username": "tamilarasi"
+}
+
+Response:
+
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+
+Access protected route
+
+GET /protected
+Authorization: Bearer <accessToken>
+
+Response:
+
+{
+  "message": "Protected data",
+  "user": { "id": 1, "username": "tamilarasi", "iat": 1737920000, "exp": 1737920020 }
+}
+
+Refresh token
+
+POST /token
+{
+    "token": "<refreshToken>"
+}
+
+Response:
+
+{
+  "accessToken": "new_access_token_here"
+}
